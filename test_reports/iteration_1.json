@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only Phase 0 POC test with real provider calls through the public URL. Result: 21/21 pytest tests passed. Covered: JRN-1..4 chat with all 3 models (non-streaming and SSE), 400 'Unsupported model' on both endpoints, 422 for empty message. JRN-5..12 images: GPT Image 1 (model_id gpt-image-1.5, a disclosed deviation), GPT transparent (downloaded the PNG and checked it with PIL: all 4 corner alphas are 0), Nano Banana generate and edit (new id and storage_path, different bytes, source_image_id set), fal.ai (fal-ai/flux-2), Auto generate reports 'GPT Image 1' and Auto edit reports 'Gemini Nano Banana', 422 for empty or whitespace prompt with no new doc, 400 for an unsupported engine, 400 'does not support edits' for a fal.ai edit, 404 for an unknown or malformed image id, 400 for transparent background on Nano Banana. Each downloaded file's content type is image/* and its dimensions match the recorded width/height. poc_images docs hold storage_path only, no base64 or blobs. JRN-13..15 Stripe: real checkout.stripe.com URL; the transaction starts as initiated with amount 1000 (int) and currency usd. 3 forged-signature webhooks returned 400 and left the transaction unchanged. 3 validly signed copies of one event: the first returned applied:true, the other two duplicate:true, the transaction went to paid with paid_event_id set, and exactly one stripe_events doc exists. A missing signature returns 400. JRN-16/17 Connect: account creation fails as expected with Stripe's verbatim 'You can only create new accounts if you've signed up for Connect...' (HTTP 400, provider=Stripe, stripe_request_id req_...). The onboarding link for acct_doesnotexist123 returns Stripe's verbatim 'No such account' (400, resource_missing, request id). Not mocked. JRN-19 email: delivered@resend.dev returns 200 with message_id; a non-allowlisted recipient returns 403; an invalid email returns 422. JRN-20: openapi.json lists all /api/poc/* endpoints and /api/stripe/webhook.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/poc/images/{id}/file", "issue": "Storage get_object errors (requests.HTTPError or timeout) are not wrapped in ProviderError, so the endpoint returns a plain 500 instead of 424 with provider detail."},
+      {"endpoint": "POST /api/poc/images/generate|edit", "issue": "images._inspect (PIL Image.open) runs outside _call. If a provider returns non-image bytes or an HTML error body, the result is an unhandled 500 (UnidentifiedImageError) instead of 424."},
+      {"endpoint": "services/storage._request", "issue": "kwargs.pop('headers', {}) runs inside the retry loop, so the retry after a 404 on PUT is sent without the Content-Type header. Pop it once before the loop."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_phase0_poc.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional hardening: wrap storage GET failures and PIL inspection failures in ProviderError (424) so provider failures never surface as a bare 500.",
+    "Fix the headers pop inside the retry loop in storage._request.",
+    "Expected blocker, not an app bug: Stripe Connect is not enabled on the unclaimed sandbox. The error is surfaced verbatim with stripe_request_id. Claim the sandbox and enable Connect to finish JRN-16..18."
+  ],
+  "critical_code_review_comments": [
+    "payments._apply trusts the payment_status in the signed event payload and does not check amount_total or currency against the stored transaction. This is acceptable for the POC because the signature is verified, but Phase 1 should cross-check amount and currency, or retrieve the session from Stripe.",
+    "The insert into stripe_events and the transaction update are not atomic. The delete_one rollback on exception is a reasonable approximation. A crash between the two would leave applied:false with no retry path.",
+    "@app.on_event startup/shutdown is deprecated in FastAPI; move to a lifespan handler.",
+    "Code quality is otherwise good: all files are under 150 lines, models use Pydantic validation, the Mongo _id is not leaked in any response, and secrets come from env."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase0_poc.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "N/A (backend only)"},
+  "seed_data_creation": "No seed data. The test run created real records that were not deleted, because there are no delete endpoints: about 7 poc_images docs plus storage objects, 1 payment_transaction (paid via the signed test webhook), 1 stripe_events doc (evt_poc_*), and 1 email_logs doc. Forged webhooks create no docs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_phase0_poc.py -v -n 4. Wall time is about 110s. It makes about 7 image-generation calls, so it spends credits. TestImages relies on shared class state, so keep loadscope. The Connect test accepts either Stripe's 'signed up for Connect' error or a 200 if Connect gets enabled later. Observed engine output: Nano Banana returns JPEG, sometimes non-square (1408x768); GPT and fal return 1024x1024 PNG."
+}

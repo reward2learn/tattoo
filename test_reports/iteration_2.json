@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 1 (Foundation & Studios) tested end-to-end. Backend: new pytest suite /app/backend/tests/test_phase1_foundation.py, 48/48 passing. It covers auth (register for 3 account types, duplicate email, short password, wrong password, 5-fail lockout -> 429, refresh, logout ending all sessions, bcrypt $2b$), isolation Q-8/Q-9 (owner1 vs studio2 settings/branding/team/invitations/audit/workspace -> 403; tenantId/studio_id in body -> 422 with studio2 unchanged; 17 protected endpoints with no token or a tampered token -> 401; artist cannot PATCH branding or invite -> 403), slug rules, branding (hex validation, PNG logo ok, gif/pdf/>5MB rejected with the exact messages, public page and logo), team flow (invite, duplicate pending, accept, already-member, remove -> former, off the public roster, workspace 403, decline, revoke, sole-owner guard, one audit record per action), platform tenants (admin ok, client 403) and OpenAPI (Phase 1 endpoints plus /api/poc/*). Frontend (Playwright, 1920 and 375): every requested JRN except JRN-28 checked. Two small design issues on the landing page; one minor backend security issue.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "The brute-force lockout key is ip+email, and ip is the first value of the X-Forwarded-For header, which the client controls. Sending a different X-Forwarded-For on each attempt avoids the lockout (verified: 7 bad attempts all returned 401, no 429). Fix: use the right-most or ingress-appended IP, or also count failures per email alone."},
+      {"endpoint": "POST /api/auth/register, /login", "issue": "These request models do not reject unknown fields (no extra='forbid'), unlike the studio models. Unknown fields are ignored, so there is no exploit today, but it is inconsistent."},
+      {"endpoint": "POST /api/auth/logout", "issue": "If the access token has already expired, logout only clears cookies and does not bump session_version, so a refresh token copied elsewhere stays valid for up to 7 days. Consider also accepting the refresh cookie here to end sessions."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LandingPage StudioDirectory at 375px", "issue": "Studio cards are 388px wide inside a 343px container and get cut off on the right (arrow and border). The grid items keep min-width:auto. Fix: add grid-cols-1 to the grid in StudioDirectory.js and/or min-w-0 on the card <Link>.", "selector": "[data-testid='studio-card-kawi-ink-jakarta']", "priority": "MEDIUM"},
+      {"component": "WorkspaceSwitcher on /artist", "issue": "The switcher renders twice (header and artist home), so data-testid workspace-switcher-dropdown and workspace-switcher-current are duplicated and strict selectors fail.", "selector": "[data-testid='workspace-switcher-current']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing page pillars section", "issues": ["The <section> has bg-zinc-900, border, rounded and py-20 on the same element as the gap-px grid. This draws a gray padded slab around the three pillar cards on desktop and mobile. Move bg-zinc-900, gap-px, border and rounded to an inner grid wrapper and keep the padding on the outer section."]},
+      {"screen": "Seeded Kawi Ink logo", "issues": ["The seed PNG has a checkerboard pattern painted into the image, so it looks like broken transparency on the public page, dashboard and cards."]},
+      {"screen": "Studio team page", "issues": ["Remove happens immediately with no confirmation dialog. The owner's own row also shows a Remove button that always fails with 'A studio needs at least one owner'; consider hiding or disabling it for the sole owner."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_phase1_foundation.py", "/app/test_reports/pytest/phase1_results.xml"],
+  "action_items": [
+    "Make the login lockout key independent of the client-supplied X-Forwarded-For header (use the trusted proxy hop, or count failures per email)",
+    "Fix StudioDirectory card overflow at 375px (grid-cols-1 / min-w-0)",
+    "Fix the landing pillars section background and padding slab",
+    "Make the duplicate workspace-switcher testids unique (e.g. a header- prefix)",
+    "Optional: confirmation dialog for Remove member; hide Remove for the sole owner; replace the checkerboard seed logo; add extra='forbid' to the auth request models"
+  ],
+  "critical_code_review_comments": [
+    "policy.py is clean: tenant comes only from the slug plus an active membership, and owner/artist roles are enforced through dependencies. OK.",
+    "team.accept deletes a duplicate invite when the user is already active. It is idempotent and safe.",
+    "No studio delete or archive endpoint exists, so test studios can only be removed directly in Mongo. The test suite now cleans up its own studios by id with a module teardown.",
+    "Workspace selection lives only in Redux, so it survives in-app navigation but resets to Independent on a full reload. This matches REQ-86 ('Redux session state'); note it in case persistence across reload is expected.",
+    "Signing up with an invited email lands on /artist with pending-invitations-callout rather than on /invitations directly. JRN-43 is satisfied because the pending invitation is shown."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase1_foundation.py"],
+  "success_rate": {"backend": "100% (48/48); 3 minor security/consistency findings", "frontend": "~95% (all JRN flows pass; 2 layout issues on the landing page)"},
+  "test_credentials": "From /app/memory/test_credentials.md; all seeded accounts worked. No failed logins were made against seeded accounts.",
+  "seed_data_creation": "Created TEST_ users at example.com (not deleted; no API exists). Created TEST studios: deleted directly from Mongo by exact id/slug with their memberships, so only kawi-ink-jakarta and ombak-tattoo-bali remain. Studio1 (kawi) team flow: invited/accepted/removed artist.wayan and test_fe_inv79779@example.com, then deleted those two 'former' membership rows. Studio1 is back to owner plus Dimas and Sekar active. Studio1's audit log keeps the records from the test run (invite x4, accept x2, decline, revoke, remove x2). Logo files uploaded to object storage for the deleted TEST studios remain. Signing out ended owner.jakarta, client, admin and artist.wayan sessions (by design).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=... pytest /app/backend/tests/test_phase1_foundation.py (self-cleaning for studios). Don't rerun test_phase0_poc.py. Verified in the UI: signup (all 3 account types and their error messages), session survives reload and access-cookie removal (refresh), sign out -> / and Back -> /login, Google button -> auth.emergentagent.com -> accounts.google.com, slug auto-suggest and errors, logo/hex errors, public theme colors applied and logo object-fit:contain, contact page, unknown slug, team invite/accept/decline/revoke/remove, switcher options Independent/Ombak/Kawi kept across SPA navigation, access denied for client, admin tenants table, 375px no horizontal scroll and mobile menu on all 6 pages. The 5-failure lockout was tested only on fresh TEST users."
+}

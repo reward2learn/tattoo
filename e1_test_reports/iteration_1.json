@@ -1,0 +1,14 @@
+{"passed": 8, "failed": 0, "bugs": [], "action_items": [
+ {"type": "blocked_external", "severity": "low", "detail": "JRN-16..18 Stripe Connect blocked pending sandbox Connect enablement (expected per spec_deviations). I only checked that Stripe's error comes back verbatim: POST /api/poc/connect/accounts -> 400 'Stripe failed: You can only create new accounts if you've signed up for Connect...'"},
+ {"type": "note", "severity": "low", "detail": "No UI this phase, so there are no browser checks. Earlier chat test failure was my own keyword assertion (test_error), fixed and rerun green."}],
+ "retest_needed": false,
+ "checks": [
+ {"criterion": "JRN-1..4 chat 3 models + unknown rejected", "name": "test_tscheck_chat.py", "lane": "backend", "status": "passed", "evidence": "POST /api/poc/chat 200 for Claude Sonnet 5.5/GPT 5.5/Gemini 3.1 Pro with tattoo aftercare replies; made-up-model -> 400 Unsupported model"},
+ {"criterion": "JRN-5,7,9,12 generate 3 engines + storage", "name": "test_tscheck_images.py::test_generate", "lane": "backend", "status": "passed", "evidence": "gpt-image-1 png 1024x1024; nano-banana jpeg 1408x768; fal png 1024x1024; /file image/*, dims match, Mongo doc has no large blobs"},
+ {"criterion": "JRN-6 transparent PNG", "name": "test_tscheck_images.py::test_transparent", "lane": "backend", "status": "passed", "evidence": "PNG format, 4 corner pixels alpha=0"},
+ {"criterion": "JRN-8,10 edit + Auto routing", "name": "test_tscheck_images.py::test_auto_and_edit", "lane": "backend", "status": "passed", "evidence": "Auto generate engine=gpt-image-1; Auto edit engine=nano-banana, new storage_path, different bytes"},
+ {"criterion": "JRN-11 empty prompt", "name": "test_tscheck_images.py::test_empty_prompt", "lane": "backend", "status": "passed", "evidence": "422; no poc_images with empty prompt added"},
+ {"criterion": "JRN-13 checkout", "name": "test_tscheck_payments.py::test_checkout", "lane": "backend", "status": "passed", "evidence": "checkout.stripe.com URL; transaction initiated/1000/usd"},
+ {"criterion": "JRN-14,15 webhook sig + idempotency", "name": "test_tscheck_payments.py::test_forged_then_idempotent", "lane": "backend", "status": "passed", "evidence": "forged -> 400, status stays initiated; valid event x3 -> 200s, status paid, 1 stripe_events record"},
+ {"criterion": "JRN-19,20 email + openapi", "name": "test_tscheck_email_openapi.py", "lane": "backend", "status": "passed", "evidence": "email -> message_id 01a1a5fb-...; openapi 200 with >=10 /api/poc paths"}
+]}
